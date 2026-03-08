@@ -1,5 +1,221 @@
 # Changelog
 
+## 0.1.48
+
+### Bug Fixes
+
+- **Fine-grained tool streaming**: Fixed `include_partial_messages=True` not delivering `input_json_delta` events by enabling the `CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING` environment variable in the subprocess. This regression affected versions 0.1.36 through 0.1.47 for users without the server-side feature flag (#644)
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.71
+
+## 0.1.47
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.70
+
+## 0.1.46
+
+### New Features
+
+- **Session history functions**: Added `list_sessions()` and `get_session_messages()` top-level functions for retrieving past session data (#622)
+- **MCP control methods**: Added `add_mcp_server()`, `remove_mcp_server()`, and typed `McpServerStatus` for runtime MCP server management (#620)
+- **Typed task messages**: Added `TaskStarted`, `TaskProgress`, and `TaskNotification` message subclasses for better type safety when handling task-related events (#621)
+- **ResultMessage stop_reason**: Added `stop_reason` field to `ResultMessage` for inspecting why a conversation turn ended (#619)
+- **Hook input enhancements**: Added `agent_id` and `agent_type` fields to tool-lifecycle hook inputs (`PreToolUseHookInput`, `PostToolUseHookInput`, `PostToolUseFailureHookInput`) (#628)
+
+### Bug Fixes
+
+- **String prompt MCP initialization**: Fixed an issue where passing a string prompt would close stdin before MCP server initialization completed, causing MCP servers to fail to register (#630)
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.69
+
+## 0.1.45
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.63
+
+## 0.1.44
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.59
+
+## 0.1.43
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.56
+
+## 0.1.42
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.55
+
+## 0.1.41
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.52
+
+## 0.1.40
+
+### Bug Fixes
+
+- **Unknown message type handling**: Fixed an issue where unrecognized CLI message types (e.g., `rate_limit_event`) would crash the session by raising `MessageParseError`. Unknown message types are now silently skipped, making the SDK forward-compatible with future CLI message types (#598)
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.51
+
+## 0.1.39
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.49
+
+## 0.1.38
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.47
+
+## 0.1.37
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.44
+
+## 0.1.36
+
+### New Features
+
+- **Thinking configuration**: Added `ThinkingConfig` types (`ThinkingConfigAdaptive`, `ThinkingConfigEnabled`, `ThinkingConfigDisabled`) and `thinking` field to `ClaudeAgentOptions` for fine-grained control over extended thinking behavior. The new `thinking` field takes precedence over the now-deprecated `max_thinking_tokens` field (#565)
+- **Effort option**: Added `effort` field to `ClaudeAgentOptions` supporting `"low"`, `"medium"`, `"high"`, and `"max"` values for controlling thinking depth (#565)
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.42
+
+## 0.1.35
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.39
+
+## 0.1.34
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.38
+- Updated CI workflows to use Claude Opus 4.6 model (#556)
+
+## 0.1.33
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.37
+
+## 0.1.32
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.36
+
+## 0.1.31
+
+### New Features
+
+- **MCP tool annotations support**: Added support for MCP tool annotations via the `@tool` decorator's new `annotations` parameter, allowing developers to specify metadata hints like `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`. Re-exported `ToolAnnotations` from `claude_agent_sdk` for convenience (#551)
+
+### Bug Fixes
+
+- **Large agent definitions**: Fixed an issue where large agent definitions would silently fail to register due to platform-specific CLI argument size limits (ARG_MAX). Agent definitions are now sent via the initialize control request through stdin, matching the TypeScript SDK approach and allowing arbitrarily large agent payloads (#468)
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.33
+
+## 0.1.30
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.32
+
+## 0.1.29
+
+### New Features
+
+- **New hook events**: Added support for three new hook event types (#545):
+  - `Notification` — for handling notification events with `NotificationHookInput` and `NotificationHookSpecificOutput`
+  - `SubagentStart` — for handling subagent startup with `SubagentStartHookInput` and `SubagentStartHookSpecificOutput`
+  - `PermissionRequest` — for handling permission requests with `PermissionRequestHookInput` and `PermissionRequestHookSpecificOutput`
+
+- **Enhanced hook input/output types**: Added missing fields to existing hook types (#545):
+  - `PreToolUseHookInput`: added `tool_use_id`
+  - `PostToolUseHookInput`: added `tool_use_id`
+  - `SubagentStopHookInput`: added `agent_id`, `agent_transcript_path`, `agent_type`
+  - `PreToolUseHookSpecificOutput`: added `additionalContext`
+  - `PostToolUseHookSpecificOutput`: added `updatedMCPToolOutput`
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.31
+
+## 0.1.28
+
+### Bug Fixes
+
+- **AssistantMessage error field**: Fixed `AssistantMessage.error` field not being populated due to incorrect data path. The error field is now correctly read from the top level of the response (#506)
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.30
+
+## 0.1.27
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.29
+
+## 0.1.26
+
+### New Features
+
+- **PostToolUseFailure hook event**: Added `PostToolUseFailure` hook event type for handling tool use failures, including `PostToolUseFailureHookInput` and `PostToolUseFailureHookSpecificOutput` types (#535)
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.27
+
+## 0.1.25
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.23
+
+## 0.1.24
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.22
+
+## 0.1.23
+
+### Features
+
+- **MCP status querying**: Added public `get_mcp_status()` method to `ClaudeSDKClient` for querying MCP server connection status without accessing private internals (#516)
+
+### Internal/Other Changes
+
+- Updated bundled Claude CLI to version 2.1.20
+
 ## 0.1.22
 
 ### Features

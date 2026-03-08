@@ -73,6 +73,7 @@ class Query:
         hooks: dict[str, list[dict[str, Any]]] | None = None,
         sdk_mcp_servers: dict[str, "McpServer"] | None = None,
         initialize_timeout: float = 60.0,
+        agents: dict[str, dict[str, Any]] | None = None,
     ):
         """Initialize Query with transport and callbacks.
 
@@ -83,6 +84,7 @@ class Query:
             hooks: Optional hook configurations
             sdk_mcp_servers: Optional SDK MCP server instances
             initialize_timeout: Timeout in seconds for the initialize request
+            agents: Optional agent definitions to send via initialize
         """
         self._initialize_timeout = initialize_timeout
         self.transport = transport
@@ -90,6 +92,7 @@ class Query:
         self.can_use_tool = can_use_tool
         self.hooks = hooks or {}
         self.sdk_mcp_servers = sdk_mcp_servers or {}
+        self._agents = agents
 
         # Control protocol state
         self.pending_control_responses: dict[str, anyio.Event] = {}
@@ -144,10 +147,12 @@ class Query:
                         hooks_config[event].append(hook_matcher_config)
 
         # Send initialize request
-        request = {
+        request: dict[str, Any] = {
             "subtype": "initialize",
             "hooks": hooks_config if hooks_config else None,
         }
+        if self._agents:
+            request["agents"] = self._agents
 
         # Use longer timeout for initialize since MCP servers may take time to start
         response = await self._send_control_request(
@@ -222,6 +227,9 @@ class Query:
             # Put error in stream so iterators can handle it
             await self._message_send.send({"type": "error", "error": str(e)})
         finally:
+            # Unblock any waiters (e.g. string-prompt path waiting for first
+            # result) so they don't stall for the full timeout on early exit.
+            self._first_result_event.set()
             # Always signal end of stream
             await self._message_send.send({"type": "end"})
 
@@ -443,8 +451,9 @@ class Query:
                 if handler:
                     result = await handler(request)
                     # Convert MCP result to JSONRPC response
-                    tools_data = [
-                        {
+                    tools_data = []
+                    for tool in result.root.tools:  # type: ignore[union-attr]
+                        tool_data: dict[str, Any] = {
                             "name": tool.name,
                             "description": tool.description,
                             "inputSchema": (
@@ -455,8 +464,11 @@ class Query:
                             if tool.inputSchema
                             else {},
                         }
-                        for tool in result.root.tools  # type: ignore[union-attr]
-                    ]
+                        if tool.annotations:
+                            tool_data["annotations"] = tool.annotations.model_dump(
+                                exclude_none=True
+                            )
+                        tools_data.append(tool_data)
                     return {
                         "jsonrpc": "2.0",
                         "id": message.get("id"),
@@ -558,6 +570,65 @@ class Query:
             }
         )
 
+    async def reconnect_mcp_server(self, server_name: str) -> None:
+        """Reconnect a disconnected or failed MCP server.
+
+        Args:
+            server_name: The name of the MCP server to reconnect
+        """
+        await self._send_control_request(
+            {
+                "subtype": "mcp_reconnect",
+                "serverName": server_name,
+            }
+        )
+
+    async def toggle_mcp_server(self, server_name: str, enabled: bool) -> None:
+        """Enable or disable an MCP server.
+
+        Args:
+            server_name: The name of the MCP server to toggle
+            enabled: Whether the server should be enabled
+        """
+        await self._send_control_request(
+            {
+                "subtype": "mcp_toggle",
+                "serverName": server_name,
+                "enabled": enabled,
+            }
+        )
+
+    async def stop_task(self, task_id: str) -> None:
+        """Stop a running task.
+
+        Args:
+            task_id: The task ID from task_notification events
+        """
+        await self._send_control_request(
+            {
+                "subtype": "stop_task",
+                "task_id": task_id,
+            }
+        )
+
+    async def wait_for_result_and_end_input(self) -> None:
+        """Wait for the first result (if needed) then close stdin.
+
+        If SDK MCP servers or hooks require bidirectional communication,
+        keeps stdin open until the first result arrives (or timeout).
+        Otherwise closes stdin immediately.
+        """
+        if self.sdk_mcp_servers or self.hooks:
+            logger.debug(
+                "Waiting for first result before closing stdin "
+                f"(sdk_mcp_servers={len(self.sdk_mcp_servers)}, "
+                f"has_hooks={bool(self.hooks)})"
+            )
+            with anyio.move_on_after(self._stream_close_timeout):
+                await self._first_result_event.wait()
+
+        await self.transport.end_input()
+
     async def stream_input(self, stream: AsyncIterable[dict[str, Any]]) -> None:
         """Stream input messages to transport.
 
@@ -570,25 +641,7 @@ class Query:
                     break
                 await self.transport.write(json.dumps(message) + "\n")
 
-            # If we have SDK MCP servers or hooks that need bidirectional communication,
-            # wait for first result before closing the channel
-            has_hooks = bool(self.hooks)
-            if self.sdk_mcp_servers or has_hooks:
-                logger.debug(
-                    f"Waiting for first result before closing stdin "
-                    f"(sdk_mcp_servers={len(self.sdk_mcp_servers)}, has_hooks={has_hooks})"
-                )
-                try:
-                    with anyio.move_on_after(self._stream_close_timeout):
-                        await self._first_result_event.wait()
-                        logger.debug("Received first result, closing input stream")
-                except Exception:
-                    logger.debug(
-                        "Timed out waiting for first result, closing input stream"
-                    )
-
-            # After all messages sent (and result received if needed), end input
-            await self.transport.end_input()
+            await self.wait_for_result_and_end_input()
         except Exception as e:
             logger.debug(f"Error streaming input: {e}")
 
