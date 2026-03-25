@@ -6,12 +6,11 @@ import os
 import platform
 import re
 import shutil
-import sys
 from collections.abc import AsyncIterable, AsyncIterator
 from contextlib import suppress
 from pathlib import Path
 from subprocess import PIPE
-from typing import Any
+from typing import Any, cast
 
 import anyio
 import anyio.abc
@@ -21,7 +20,7 @@ from anyio.streams.text import TextReceiveStream, TextSendStream
 from ..._errors import CLIConnectionError, CLINotFoundError, ProcessError
 from ..._errors import CLIJSONDecodeError as SDKJSONDecodeError
 from ..._version import __version__
-from ...types import ClaudeAgentOptions
+from ...types import ClaudeAgentOptions, SystemPromptFile, SystemPromptPreset
 from . import Transport
 
 logger = logging.getLogger(__name__)
@@ -172,12 +171,12 @@ class SubprocessCLITransport(Transport):
         elif isinstance(self._options.system_prompt, str):
             cmd.extend(["--system-prompt", self._options.system_prompt])
         else:
-            if (
-                self._options.system_prompt.get("type") == "preset"
-                and "append" in self._options.system_prompt
-            ):
+            sp = self._options.system_prompt
+            if sp.get("type") == "file":
+                cmd.extend(["--system-prompt-file", cast(SystemPromptFile, sp)["path"]])
+            elif sp.get("type") == "preset" and "append" in sp:
                 cmd.extend(
-                    ["--append-system-prompt", self._options.system_prompt["append"]]
+                    ["--append-system-prompt", cast(SystemPromptPreset, sp)["append"]]
                 )
 
         # Handle tools option (base set of tools)
@@ -548,6 +547,15 @@ class SubprocessCLITransport(Transport):
                     if not json_line:
                         continue
 
+                    # Skip non-JSON lines (e.g. [SandboxDebug]) when not
+                    # mid-parse — they corrupt the buffer otherwise (#347).
+                    if not json_buffer and not json_line.startswith("{"):
+                        logger.debug(
+                            "Skipping non-JSON line from CLI stdout: %s",
+                            json_line[:200],
+                        )
+                        continue
+
                     # Keep accumulating partial JSON until we can parse it
                     json_buffer += json_line
 
@@ -616,13 +624,14 @@ class SubprocessCLITransport(Transport):
                         ]
 
                         if version_parts < min_parts:
-                            warning = (
-                                f"Warning: Claude Code version {version} is unsupported in the Agent SDK. "
-                                f"Minimum required version is {MINIMUM_CLAUDE_CODE_VERSION}. "
-                                "Some features may not work correctly."
+                            logger.warning(
+                                "Claude Code version %s at %s is unsupported in the Agent SDK. "
+                                "Minimum required version is %s. "
+                                "Some features may not work correctly.",
+                                version,
+                                self._cli_path,
+                                MINIMUM_CLAUDE_CODE_VERSION,
                             )
-                            logger.warning(warning)
-                            print(warning, file=sys.stderr)
         except Exception:
             pass
         finally:

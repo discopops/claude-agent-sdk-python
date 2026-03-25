@@ -32,6 +32,13 @@ class SystemPromptPreset(TypedDict):
     append: NotRequired[str]
 
 
+class SystemPromptFile(TypedDict):
+    """System prompt file configuration."""
+
+    type: Literal["file"]
+    path: str
+
+
 class ToolsPreset(TypedDict):
     """Tools preset configuration."""
 
@@ -797,6 +804,10 @@ class AssistantMessage:
     parent_tool_use_id: str | None = None
     error: AssistantMessageError | None = None
     usage: dict[str, Any] | None = None
+    message_id: str | None = None
+    stop_reason: str | None = None
+    session_id: str | None = None
+    uuid: str | None = None
 
 
 @dataclass
@@ -888,6 +899,9 @@ class ResultMessage:
     usage: dict[str, Any] | None = None
     result: str | None = None
     structured_output: Any = None
+    model_usage: dict[str, Any] | None = None
+    permission_denials: list[Any] | None = None
+    uuid: str | None = None
 
 
 @dataclass
@@ -1044,7 +1058,7 @@ class ClaudeAgentOptions:
 
     tools: list[str] | ToolsPreset | None = None
     allowed_tools: list[str] = field(default_factory=list)
-    system_prompt: str | SystemPromptPreset | None = None
+    system_prompt: str | SystemPromptPreset | SystemPromptFile | None = None
     mcp_servers: dict[str, McpServerConfig] | str | Path = field(default_factory=dict)
     permission_mode: PermissionMode | None = None
     continue_conversation: bool = False
